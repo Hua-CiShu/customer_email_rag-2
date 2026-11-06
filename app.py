@@ -33,7 +33,7 @@ with st.sidebar:
         value=os.environ.get("OPENAI_API_KEY", ""),
         type="password",
         placeholder="Paste your HKUST GenAI key",
-        help="在页面中输入,无需在终端配置环境变量",
+        help="Enter it in the page, no need to configure environment variables in the terminal",
     )
     base_url = st.text_input("Base URL", value=rag.DEFAULT_BASE_URL)
     chat_model = st.text_input("Chat model", value=rag.DEFAULT_CHAT_MODEL)
@@ -53,7 +53,7 @@ with st.sidebar:
 # Main panel: inputs (Dify "User Input" node)
 # ---------------------------------------------------------------------------
 st.title("🤖 Customer Email Automation")
-st.caption("RAG 客服邮件自动回复 · Rebuilt from Dify workflow with Python + Streamlit")
+st.caption("RAG Customer Email Automation")
 
 col_in, col_out = st.columns(2)
 
@@ -76,7 +76,7 @@ with col_in:
 with col_out:
     st.subheader("🤖 Generated Reply")
     if not api_key.strip():
-        st.warning("请先在左侧边栏输入 API Key。")
+        st.warning("Please enter it in the left sidebar first API Key。")
     elif run:
         try:
             with st.status("Running pipeline...", expanded=True) as status:
@@ -113,7 +113,7 @@ with col_out:
 
 st.divider()
 st.caption(
-    "Workflow mapping — User Input → 表单 ｜ Question Classifier → `classify_email()` ｜ "
+    "Workflow mapping — User Input → Form ｜ Question Classifier → `classify_email()` ｜ "
     "Knowledge Retrieval → `build_index()` + `retrieve()` ｜ LLM → `generate_reply()` ｜ "
-    "Output → 右侧回复面板"
+    "Output → Reply panel on the right"
 )
