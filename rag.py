@@ -244,3 +244,41 @@ def run_pipeline(customer_name: str, subject: str, email_body: str,
         "retrieved_chunks": chunks,
         "reply": reply,
     }
+# ---------------------------------------------------------------------------
+# Raw email parsing  (paste full email or upload a file)
+# ---------------------------------------------------------------------------
+
+PARSE_PROMPT = """You are an email parser for a customer support tool.
+From the raw email text below, extract three fields:
+
+- "customer_name": the sender's name (from the From: line or the sign-off).
+  Empty string if unknown.
+- "subject": the subject line. Empty string if there is none.
+- "body": the message body only — strip headers (From/To/Date/Subject) and
+  any quoted reply history.
+
+Return ONLY a JSON object, no markdown fences, no commentary:
+{"customer_name": "...", "subject": "...", "body": "..."}"""
+
+
+def parse_email(client, raw_text: str, model: str = DEFAULT_CHAT_MODEL) -> dict:
+    """Turn a raw pasted/uploaded email into {customer_name, subject, body}."""
+    resp = client.chat.completions.create(
+        model=model,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": PARSE_PROMPT},
+            {"role": "user", "content": raw_text[:8000]},
+        ],
+    )
+    text = resp.choices[0].message.content.strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = {}
+    return {
+        "customer_name": str(data.get("customer_name") or "").strip(),
+        "subject": str(data.get("subject") or "").strip(),
+        "body": str(data.get("body") or raw_text).strip(),
+    }

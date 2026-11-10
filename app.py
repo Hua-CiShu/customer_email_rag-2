@@ -1,12 +1,13 @@
 """SupportFlow - AI customer email copilot.
 
 Product-grade Streamlit UI for the RAG workflow rebuilt from Dify:
-  User Input -> Question Classifier -> Knowledge Retrieval -> LLM -> Output
+  Parse -> Question Classifier -> Knowledge Retrieval -> LLM -> Draft
 
 Run:  streamlit run app.py
 """
 
 import html
+import io
 import os
 import time
 
@@ -37,14 +38,13 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 [data-testid="stAppViewContainer"] { background: #F5F6F8; }
-.block-container { max-width: 1180px; padding-top: 1.6rem; padding-bottom: 3rem; }
+.block-container { max-width: 1240px; padding-top: 1.2rem; padding-bottom: 2rem; }
 
-/* keep the sidebar toggle, hide the rest of the chrome */
 #MainMenu, footer, [data-testid="stDeployButton"] { visibility: hidden; }
 header[data-testid="stHeader"] { background: transparent; }
 
 /* ---------- brand bar ---------- */
-.brand { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+.brand { display: flex; align-items: center; gap: 14px; }
 .brand-mark {
     width: 44px; height: 44px; border-radius: 12px;
     background: linear-gradient(135deg, #1D4ED8 0%, #0EA5E9 100%);
@@ -56,6 +56,22 @@ header[data-testid="stHeader"] { background: transparent; }
 .brand-sub  { font-size: 13px; color: #64748B; margin-top: 1px; }
 .brand-right { margin-left: auto; font-size: 12px; color: #94A3B8; text-align: right; }
 
+/* ---------- pipeline strip ---------- */
+.flow {
+    display: flex; align-items: center; gap: 12px;
+    background: #FFFFFF; border: 1px solid #E7E9EE; border-radius: 12px;
+    padding: 12px 18px; margin: 14px 0 18px;
+}
+.flow-step { display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; font-weight: 600; color: #334155; }
+.flow-num {
+    width: 20px; height: 20px; border-radius: 6px;
+    background: #EFF6FF; color: #1D4ED8; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+.flow-arrow { color: #CBD5E1; font-size: 13px; }
+.flow-note { margin-left: auto; font-size: 11.5px; color: #94A3B8; }
+
 /* ---------- cards ---------- */
 [data-testid="stVerticalBlockBorderWrapper"] {
     background: #FFFFFF;
@@ -64,7 +80,15 @@ header[data-testid="stHeader"] { background: transparent; }
     box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
 }
 .card-title { font-size: 15px; font-weight: 600; color: #0F172A; margin-bottom: 2px; }
-.card-hint  { font-size: 12.5px; color: #94A3B8; margin-bottom: 12px; }
+.card-hint  { font-size: 12.5px; color: #94A3B8; margin-bottom: 10px; }
+
+/* ---------- tabs ---------- */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #EEF0F3; }
+.stTabs [data-baseweb="tab"] {
+    font-size: 13px; font-weight: 600; color: #64748B;
+    padding: 6px 14px;
+}
+.stTabs [aria-selected="true"] { color: #1D4ED8 !important; }
 
 /* ---------- inputs & buttons ---------- */
 .stTextInput input, .stTextArea textarea {
@@ -94,9 +118,20 @@ button[kind="secondary"], [data-testid="stBaseButton-secondary"] {
 .chip-blue  { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
 .chip-amber { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
 
+.stat-row { display: flex; gap: 12px; margin: 12px 0 14px; }
+.stat {
+    flex: 1; background: #F8FAFC; border: 1px solid #E7E9EE;
+    border-radius: 12px; padding: 12px 16px;
+}
+.stat-label {
+    font-size: 10.5px; color: #94A3B8; text-transform: uppercase;
+    letter-spacing: .6px; font-weight: 600; margin-bottom: 5px;
+}
+.stat-value { font-size: 15px; font-weight: 700; color: #0F172A; }
+
 .reply-card {
     background: #FFFFFF; border: 1px solid #E7E9EE; border-radius: 14px;
-    padding: 26px 28px; white-space: pre-wrap; line-height: 1.75;
+    padding: 24px 26px; white-space: pre-wrap; line-height: 1.75;
     font-size: 14.5px; color: #1F2937;
     box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
 }
@@ -104,9 +139,9 @@ button[kind="secondary"], [data-testid="stBaseButton-secondary"] {
 
 .empty-card {
     border: 1.5px dashed #D6DAE1; border-radius: 14px; background: #FAFBFC;
-    min-height: 420px; display: flex; flex-direction: column;
+    min-height: 360px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
-    color: #9AA3B2; text-align: center; padding: 40px;
+    color: #9AA3B2; text-align: center; padding: 36px;
 }
 .empty-title { font-size: 14.5px; font-weight: 600; color: #6B7280; }
 .empty-sub   { font-size: 12.5px; }
@@ -126,7 +161,7 @@ section[data-testid="stSidebar"] hr { border-color: #1E2A44; }
 .side-sub   { font-size: 11.5px; color: #7C8AA5; margin-bottom: 6px; }
 
 .footer {
-    margin-top: 34px; text-align: center;
+    margin-top: 26px; text-align: center;
     font-size: 11.5px; color: #9AA3B2;
 }
 """
@@ -164,10 +199,10 @@ with st.sidebar:
         st.success("Index cache cleared.")
 
     st.divider()
-    st.caption("SupportFlow v1.0 · Internal tool")
+    st.caption("SupportFlow v1.1 · Internal tool")
 
 # ---------------------------------------------------------------------------
-# Brand header
+# Brand header + pipeline strip
 # ---------------------------------------------------------------------------
 st.markdown(
     '<div class="brand">'
@@ -178,10 +213,22 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
-st.write("")
+st.markdown(
+    '<div class="flow">'
+    '<div class="flow-step"><span class="flow-num">1</span>Parse email</div>'
+    '<span class="flow-arrow">→</span>'
+    '<div class="flow-step"><span class="flow-num">2</span>Classify issue</div>'
+    '<span class="flow-arrow">→</span>'
+    '<div class="flow-step"><span class="flow-num">3</span>Retrieve policy</div>'
+    '<span class="flow-arrow">→</span>'
+    '<div class="flow-step"><span class="flow-num">4</span>Draft reply</div>'
+    '<span class="flow-note">RAG pipeline · paste a full email or drop a file</span>'
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
-# Sample emails
+# Sample emails (manual tab)
 # ---------------------------------------------------------------------------
 SAMPLES = {
     "Delayed order (shipping)": {
@@ -211,6 +258,18 @@ def _load_sample():
             st.session_state[key] = val
 
 
+def _read_uploaded(uploaded) -> str:
+    name = uploaded.name.lower()
+    data = uploaded.read()
+    if name.endswith((".txt", ".md")):
+        return data.decode("utf-8", errors="replace")
+    if name.endswith(".docx"):
+        import docx  # python-docx
+        doc = docx.Document(io.BytesIO(data))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    raise ValueError("Unsupported file type — please use .txt or .docx")
+
+
 # ---------------------------------------------------------------------------
 # Main layout
 # ---------------------------------------------------------------------------
@@ -218,35 +277,70 @@ col_in, col_out = st.columns([5, 6], gap="large")
 
 with col_in:
     with st.container(border=True):
-        st.markdown('<div class="card-title">New customer email</div>',
+        st.markdown('<div class="card-title">Incoming email</div>',
                     unsafe_allow_html=True)
-        st.markdown('<div class="card-hint">Paste an incoming message, or load a sample to try the copilot.</div>',
+        st.markdown('<div class="card-hint">Paste the full email or drop a file — SupportFlow extracts the sender, subject and body for you.</div>',
                     unsafe_allow_html=True)
 
-        st.selectbox(
-            "Sample emails",
-            [""] + list(SAMPLES.keys()),
-            key="sample_choice",
-            on_change=_load_sample,
-            label_visibility="collapsed",
-            placeholder="Load a sample email…",
-        )
+        tab_paste, tab_file, tab_manual = st.tabs(
+            ["Full email", "File upload", "Manual entry"])
 
-        name_col, subj_col = st.columns([1, 2])
-        customer_name = name_col.text_input("Customer name", key="customer_name",
-                                            placeholder="Megan")
-        subject = subj_col.text_input("Subject", key="subject",
-                                      placeholder="Order hasn't arrived")
-        email_body = st.text_area(
-            "Message",
-            key="email_body",
-            height=200,
-            placeholder="Paste the customer's email here…",
-            label_visibility="collapsed",
+        with tab_paste:
+            raw_input = st.text_area(
+                "Raw email",
+                key="raw_email",
+                height=270,
+                placeholder=(
+                    "Paste the complete email here, headers included. For example:\n\n"
+                    "From: Megan <megan@example.com>\n"
+                    "Subject: Order hasn't arrived\n\n"
+                    "Hi, my order was supposed to arrive last week…"
+                ),
+                label_visibility="collapsed",
+            )
+
+        with tab_file:
+            uploaded = st.file_uploader(
+                "Upload email file",
+                type=["txt", "md", "docx"],
+                key="email_file",
+                label_visibility="collapsed",
+            )
+            if uploaded is not None:
+                st.caption(f"{uploaded.name} · {uploaded.size / 1024:.1f} KB — "
+                           "will be parsed automatically")
+            st.caption("Supported formats: .txt, .md, .docx")
+
+        with tab_manual:
+            st.selectbox(
+                "Sample emails",
+                [""] + list(SAMPLES.keys()),
+                key="sample_choice",
+                on_change=_load_sample,
+                label_visibility="collapsed",
+                placeholder="Load a sample email…",
+            )
+            name_col, subj_col = st.columns([1, 2])
+            customer_name = name_col.text_input("Customer name",
+                                                key="customer_name",
+                                                placeholder="Megan")
+            subject = subj_col.text_input("Subject", key="subject",
+                                          placeholder="Order hasn't arrived")
+            email_body = st.text_area(
+                "Message",
+                key="email_body",
+                height=140,
+                placeholder="Paste the customer's email here…",
+                label_visibility="collapsed",
+            )
+
+        has_input = bool(
+            (raw_input or "").strip()
+            or st.session_state.get("email_file") is not None
+            or (st.session_state.get("email_body") or "").strip()
         )
-        run = st.button("Generate draft reply", type="primary",
-                        use_container_width=True,
-                        disabled=not email_body.strip())
+        run = st.button("Analyze & draft reply", type="primary",
+                        use_container_width=True, disabled=not has_input)
 
 with col_out:
     if run and not api_key.strip():
@@ -258,19 +352,47 @@ with col_out:
                 client = rag.get_client(api_key=api_key.strip(),
                                         base_url=base_url.strip())
 
-                st.write("Classifying request…")
-                class_id = rag.classify_email(client, subject, email_body,
-                                              chat_model)
+                # --- 1. resolve input: file > pasted raw email > manual ---
+                uploaded_file = st.session_state.get("email_file")
+                if uploaded_file is not None:
+                    st.write("Reading file…")
+                    raw_text = _read_uploaded(uploaded_file)
+                    source_label = uploaded_file.name
+                elif (raw_input or "").strip():
+                    raw_text = raw_input
+                    source_label = "pasted email"
+                else:
+                    raw_text = ""
+                    source_label = "manual entry"
 
+                if raw_text:
+                    st.write("Parsing email…")
+                    parsed = rag.parse_email(client, raw_text, chat_model)
+                    name = parsed["customer_name"]
+                    subj = parsed["subject"]
+                    body = parsed["body"]
+                else:
+                    name = st.session_state.get("customer_name", "")
+                    subj = st.session_state.get("subject", "")
+                    body = st.session_state.get("email_body", "")
+
+                if not body.strip():
+                    raise ValueError("No email content found to analyze.")
+
+                # --- 2. classify ---
+                st.write("Classifying request…")
+                class_id = rag.classify_email(client, subj, body, chat_model)
+
+                # --- 3. retrieve ---
                 st.write("Searching the knowledge base…")
                 index = rag.build_index(client, embed_model)
                 chunks = rag.retrieve(client, index, class_id,
-                                      f"{subject}\n{email_body}",
-                                      top_k, embed_model)
+                                      f"{subj}\n{body}", top_k, embed_model)
 
+                # --- 4. draft ---
                 st.write("Drafting reply…")
-                reply = rag.generate_reply(client, customer_name, email_body,
-                                           chunks, chat_model)
+                reply = rag.generate_reply(client, name, body, chunks,
+                                           chat_model)
 
                 st.session_state["result"] = {
                     "class_id": class_id,
@@ -278,6 +400,9 @@ with col_out:
                     "kb_file": rag.CLASS_INFO[class_id]["kb_file"],
                     "chunks": chunks,
                     "reply": reply,
+                    "from_name": name,
+                    "subject": subj,
+                    "source_label": source_label,
                     "elapsed": time.perf_counter() - t0,
                 }
                 status.update(label="Draft ready", state="complete",
@@ -303,16 +428,38 @@ with col_out:
         )
     else:
         chip_class = "chip-blue" if result["class_id"] == 1 else "chip-amber"
+        from_line = html.escape(result["from_name"] or "Unknown sender")
+        subj_line = html.escape(result["subject"] or "(no subject)")
+
         head_l, head_r = st.columns([3, 2])
         with head_l:
             st.markdown('<div class="card-title">Draft reply</div>',
                         unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="card-hint" style="margin-bottom:0">'
+                f'From <b>{from_line}</b> · {subj_line} · '
+                f'{html.escape(result["source_label"])}</div>',
+                unsafe_allow_html=True,
+            )
         with head_r:
             st.markdown(
-                f'<div style="text-align:right"><span class="chip {chip_class}">'
+                f'<div style="text-align:right;padding-top:6px">'
+                f'<span class="chip {chip_class}">'
                 + html.escape(result["class_name"]) + "</span></div>",
                 unsafe_allow_html=True,
             )
+
+        st.markdown(
+            '<div class="stat-row">'
+            f'<div class="stat"><div class="stat-label">Category</div>'
+            f'<div class="stat-value">Class {result["class_id"]}</div></div>'
+            f'<div class="stat"><div class="stat-label">Source passages</div>'
+            f'<div class="stat-value">{len(result["chunks"])}</div></div>'
+            f'<div class="stat"><div class="stat-label">Draft time</div>'
+            f'<div class="stat-value">{result["elapsed"]:.1f}s</div></div>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
         st.markdown(
             f'<div class="reply-card">{html.escape(result["reply"])}</div>',
@@ -322,7 +469,7 @@ with col_out:
             f'<div class="meta-line">Grounded in '
             f'<b>{html.escape(result["kb_file"])}</b> · '
             f'{len(result["chunks"])} source passages · '
-            f'{result["elapsed"]:.1f}s · Always review before sending</div>',
+            "Always review before sending</div>",
             unsafe_allow_html=True,
         )
 
