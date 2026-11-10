@@ -1,47 +1,78 @@
-# Customer Email Automation (Python + Streamlit 版)
+# SupportFlow · AI Customer Email Copilot
 
-这是对 Dify 工作流 **Customer Email Automation** 的完整重建：
+SupportFlow turns incoming customer emails into grounded, ready-to-review reply
+drafts. Paste a full email or drop a file — it parses the sender, subject and
+body, classifies the issue, retrieves the relevant company policy, and drafts a
+reply that cites real knowledge-base content instead of hallucinating.
+
+Originally prototyped as a Dify workflow ("Customer Email Automation"), rebuilt
+as a standalone product with Python + Streamlit.
 
 ```
-User Input → Question Classifier → Knowledge Retrieval → LLM → Output
+Parse email → Classify issue → Retrieve policy → Draft reply
 ```
 
-- **分类**：LLM 把客户邮件分为「物流/配送」或「退款/退货/换货」两类
-- **检索**：按分类用 embedding 在对应知识库中检索 Top-K 相关段落（纯 NumPy 实现，无需向量数据库）
-- **生成**：LLM 基于检索到的知识撰写客服回复邮件
-- **缓存**：embedding 结果写入 `.embed_cache.npz`，重启后无需重复计算
+## Features
 
-## 快速开始
+- **Zero-friction intake** — paste a raw email (headers included) or upload a
+  `.txt` / `.md` / `.docx` file; an LLM extracts sender, subject and body.
+  Manual field entry is still available as a fallback.
+- **Issue classification** — routes each email to *Shipping / Delivery* or
+  *Refund / Return / Exchange* with an LLM classifier.
+- **Grounded retrieval (RAG)** — each category has its own knowledge base;
+  top-K passages are retrieved via embeddings with pure NumPy cosine
+  similarity (no vector database required).
+- **Transparent drafting** — every draft shows its category, source passages,
+  grounding file and generation time, with an "always review before sending"
+  reminder.
+- **Privacy-friendly keys** — each user pastes their own API key in the
+  sidebar; it lives only in the browser session and is never written to disk.
+- **Fast restarts** — embeddings are cached to `.embed_cache.npz` and rebuilt
+  on demand from the sidebar.
+
+## Quick start
 
 ```bash
-cd customer_email_rag
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-打开页面后，在**左侧边栏粘贴你的 API Key** 即可使用 —— 网关地址
-（HKUST GenAI）和模型名已内置为默认值，无需在终端配置任何环境变量。
-每个使用者输入自己的 key；key 只保存在当前浏览器会话里，不会写入磁盘。
+Open the page, paste your API key in the sidebar, load a sample email (or
+paste your own), and hit **Analyze & draft reply**.
 
-（高级用法：`.env` 环境变量仍可覆盖默认值，参考 `.env.example`。)
+The default endpoint is the HKUST GenAI gateway; the base URL and both models
+can be changed under **Advanced** in the sidebar, or via `.env`
+(see `.env.example`) for any OpenAI-compatible provider.
 
-## 文件结构
+## Deploy as a public web app
 
-| 文件 | 说明 |
+1. Push this repo to GitHub (`.gitignore` already excludes `.env` and caches —
+   never commit an API key).
+2. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub.
+3. **Create app** → pick the repo → main file path `app.py` → **Deploy**.
+4. Share the generated `*.streamlit.app` link; visitors each enter their own
+   API key.
+
+Every push to `main` redeploys automatically.
+
+## Project structure
+
+| Path | What it does |
 |---|---|
-| `app.py` | Streamlit 界面（输入表单、流程状态、回复展示、检索结果查看） |
-| `rag.py` | 核心逻辑：分类 / 分块 / embedding / 检索 / 生成 |
-| `knowledge/shipping_policy.md` | 物流政策知识库（Class 1）— 替换为你自己的文档 |
-| `knowledge/refund_policy.md` | 退款退货知识库（Class 2）— 替换为你自己的文档 |
-| `.env.example` | 环境变量模板 |
+| `app.py` | Product UI: intake tabs (paste / file / manual), pipeline status, result cards, grounding sources |
+| `rag.py` | Core logic: email parsing, classification, chunking, embeddings, retrieval, reply drafting |
+| `knowledge/shipping_policy.md` | Knowledge base for Class 1 — replace with your own document |
+| `knowledge/refund_policy.md` | Knowledge base for Class 2 — replace with your own document |
+| `.env.example` | Optional environment-variable template |
 
-## 更换知识库
+## Customizing the knowledge base
 
-直接把你在 Dify 里上传的两份文档内容替换进 `knowledge/` 下的两个 markdown
-文件（或新增文件并修改 `rag.py` 里的 `CLASS_INFO`），然后在侧边栏点
-「🔄 Rebuild embedding index」重建索引即可。
+Replace the two markdown files under `knowledge/` (or add new categories in
+`CLASS_INFO` in `rag.py`), then click **Rebuild embedding index** in the
+sidebar to re-embed.
 
-## 兼容其他模型
+## Tech notes
 
-设置 `OPENAI_BASE_URL` 即可接入任何 OpenAI 兼容接口（DeepSeek、Moonshot、
-Azure、本地 vLLM 等）；embedding 模型同理，可用 `EMBED_MODEL` 覆盖。
+- Python + Streamlit, OpenAI-compatible chat + embeddings
+- Retrieval: chunked markdown → embeddings → cosine similarity (NumPy)
+- Word file parsing via `python-docx`
